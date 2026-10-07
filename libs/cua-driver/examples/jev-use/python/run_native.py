@@ -30,7 +30,12 @@ from mcp.client.stdio import stdio_client
 
 from choose_action import validate_request
 from core import Candidate, VisualObservationError, parse_visual_regions, validate_choice
-from decision_models import DecisionRequest, TypeSafeDecisionModel, choose
+from decision_models import (
+    DecisionRequest,
+    OpenAIDecisionModel,
+    TypeSafeDecisionModel,
+    choose,
+)
 from driver_env import driver_environment
 from jev_adapter import choose_mock_for_task
 from native import NativeObservation, NativeObservationError
@@ -219,6 +224,18 @@ def choose_live(request: dict[str, Any]) -> tuple[str | None, float, dict[str, f
     return result.selected_id, result.confidence or 0.0, dict(result.probabilities)
 
 
+def choose_openai(request: dict[str, Any]) -> tuple[str | None, float, dict[str, float]]:
+    from openai_adapter import HttpDecisionsClient
+
+    result = choose(
+        OpenAIDecisionModel(HttpDecisionsClient()),
+        DecisionRequest.from_validated(validate_request(request)),
+    )
+    if result.kind == "error":
+        raise RuntimeError(f"provider decision failed: {result.reason}")
+    return result.selected_id, result.confidence or 0.0, dict(result.probabilities)
+
+
 def assert_in_scope(candidate: Candidate, pid: int, window_id: int) -> None:
     """Refuse any action addressed outside the task's one window."""
     if candidate.tool is None:
@@ -296,6 +313,18 @@ async def run_task(args: argparse.Namespace, task: NativeTask) -> str:
                                                "candidate_count": len(plan.candidates),
                                                "expected_ids": task.expected_next(history),
                                                "error": "S1ServiceError", "reason": str(error)[:128]})
+                        return "unknown"
+                elif args.provider == "openai":
+                    try:
+                        choice, confidence, probabilities = await asyncio.to_thread(
+                            choose_openai, request
+                        )
+                    except RuntimeError as error:
+                        write_event(log_path, {"event": "outcome", "outcome": "unknown",
+                                               "phase": "decide", "step": step,
+                                               "candidate_count": len(plan.candidates),
+                                               "expected_ids": task.expected_next(history),
+                                               "error": "RuntimeError", "reason": str(error)[:128]})
                         return "unknown"
                 else:
                     choice, confidence, probabilities = await asyncio.to_thread(choose_live, request)
@@ -382,8 +411,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task", choices=NATIVE_TASK_IDS, required=True)
     parser.add_argument(
-        "--provider", choices=("mock", "live", "s1"), default="mock",
-        help="s1 reads the loopback decide URL from CUA_S1_DECISION_URL",
+        "--provider", choices=("mock", "live", "s1", "openai"), default="mock",
+        help="s1 reads the loopback decide URL from CUA_S1_DECISION_URL; "
+        "openai uses the Decisions API with OPENAI_API_KEY",
     )
     parser.add_argument("--pid", type=int, required=True, help="the running harness process")
     parser.add_argument("--state-file", required=True, help="the harness task-state file path")
@@ -405,6 +435,10 @@ def main() -> None:
     args = parse_args()
     if args.provider == "s1":
         s1_service_url()  # fail before touching the app when the service is not configured
+    if args.provider == "openai":
+        from openai_adapter import HttpDecisionsClient
+
+        HttpDecisionsClient()  # fail before touching the app when the key is not configured
     try:
         outcome = asyncio.run(run_task(args, task_from_args(args)))
     except (OracleError, NativeObservationError) as error:

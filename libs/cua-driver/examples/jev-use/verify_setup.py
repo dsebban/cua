@@ -126,6 +126,17 @@ def require_key() -> None:
     os.environ['TYPESAFE_API_KEY'] = key
 
 
+def require_openai_key() -> None:
+    if os.environ.get('OPENAI_API_KEY', '').strip():
+        return
+    if not sys.stdin.isatty():
+        raise SystemExit('Human prerequisite: provision OPENAI_API_KEY before an unattended OpenAI run')
+    key = getpass.getpass('OpenAI API key: ').strip()
+    if not key:
+        raise SystemExit('No key supplied')
+    os.environ['OPENAI_API_KEY'] = key
+
+
 def runner_command(language: str, provider: str) -> list[str]:
     if language == 'python':
         return [sys.executable, 'python/run.py', '--provider', provider]
@@ -135,6 +146,8 @@ def runner_command(language: str, provider: str) -> list[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description='Verify Jev setup with an owned, automatically cleaned-up fixture.')
     parser.add_argument('--live', action='store_true', help='also verify live Jev; requires a TypeSafe key')
+    parser.add_argument('--openai', action='store_true',
+                        help='also verify the OpenAI Decisions provider (Python runner only); requires OPENAI_API_KEY')
     parser.add_argument('--typescript', action='store_true', help='also verify the installed TypeScript agent')
     parser.add_argument('--port', type=int, default=0, help='fixture port; defaults to an unused loopback port')
     parser.add_argument('--max-steps', type=int, default=4, help='maximum decisions per runner')
@@ -152,11 +165,14 @@ def main() -> None:
         parser.error('--require-visual-path needs a working visual observation')
     if args.live:
         require_key()
+    if args.openai:
+        require_openai_key()
     output = args.output_dir.resolve()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     summary = {
         'complete': False,
         'live_requested': args.live,
+        'openai_requested': args.openai,
         'typescript_requested': args.typescript,
         'fixture': 'visual' if args.visual_fixture else 'default',
         'visual_path_required': args.require_visual_path,
@@ -168,7 +184,11 @@ def main() -> None:
             print(json.dumps({'event': 'fixture_ready', 'url': url}), flush=True)
             summary['fixture_url'] = url
             for language in (['python', 'typescript'] if args.typescript else ['python']):
-                for provider in (['mock', 'live'] if args.live else ['mock']):
+                providers = ['mock', 'live'] if args.live else ['mock']
+                # The OpenAI Decisions adapter exists only for the Python runner.
+                if args.openai and language == 'python':
+                    providers = providers + ['openai']
+                for provider in providers:
                     token = f'jev-guide-{provider}'
                     log = output / f'{language}-{provider}.jsonl'
                     command = runner_command(language, provider)

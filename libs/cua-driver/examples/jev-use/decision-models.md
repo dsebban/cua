@@ -94,6 +94,20 @@ uv run --frozen python/choose_decision.py --model jev \
   < fixtures/jev-choice-request-v1.json
 ```
 
+The OpenAI path sends the same bounded candidate table to the OpenAI
+[Decisions API](https://developers.openai.com/api/docs/guides/decisions)
+(`POST /v1/decisions`, `gpt-6-luna`) as a single `choice` question whose
+`choices` are the candidate IDs and descriptions, then maps the answer's
+`choice`, per-option `probabilities`, and `confidence` onto `ModelScores`.
+It reads `OPENAI_API_KEY` from the local environment and honors
+`OPENAI_BASE_URL` for OpenAI-compatible gateways (`http://` is accepted only
+on loopback). Run it only with data you intend to send to that service:
+
+```bash
+uv run --frozen python/choose_decision.py --model openai \
+  < fixtures/jev-choice-request-v1.json
+```
+
 The S1 path runs locally and needs the separately installed `cua-s1` Python
 package with its `four-b` inference extra, which supplies PyTorch, PEFT, and
 Transformers 5. From the repository root, create that environment from the

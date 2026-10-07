@@ -24,6 +24,7 @@ from core import (
     validate_choice,
 )
 from jev_adapter import choose_live_for_task, choose_mock_for_task
+from openai_adapter import choose_live_for_task_openai
 from tasks import (
     FixtureFormTask,
     Task,
@@ -444,6 +445,10 @@ async def run(args: argparse.Namespace) -> str:
                     choice, confidence, probabilities = choose_mock_for_task(
                         task, sources, candidates, history
                     )
+                elif args.provider == "openai":
+                    choice, confidence, probabilities = await asyncio.to_thread(
+                        choose_live_for_task_openai, task, sources, candidates, history
+                    )
                 else:
                     choice, confidence, probabilities = await asyncio.to_thread(
                         choose_live_for_task, task, sources, candidates, history
@@ -584,7 +589,7 @@ async def run(args: argparse.Namespace) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", choices=("mock", "live"), default="mock")
+    parser.add_argument("--provider", choices=("mock", "live", "openai"), default="mock")
     parser.add_argument(
         "--fixture-url", type=validate_fixture_url, default="http://127.0.0.1:8765/"
     )

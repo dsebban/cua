@@ -288,15 +288,25 @@ background-process lifetime and cross-call signal restrictions in agent shells.
 ```bash
 uv run --frozen python verify_setup.py --output-dir proof-mock
 uv run --frozen python verify_setup.py --live --output-dir proof-live
+uv run --frozen python verify_setup.py --openai --output-dir proof-openai
 ```
 
 Use a new output directory for every attempt. `--live` adds live Jev after the
 mock check; it reads `TYPESAFE_API_KEY`, prompts securely in an interactive
-terminal, or stops before starting if an unattended run lacks a key. After
+terminal, or stops before starting if an unattended run lacks a key. `--openai`
+likewise adds the OpenAI Decisions provider after the mock check, reading
+`OPENAI_API_KEY` the same way; it covers the Python runner only. After
 installing the TypeScript dependencies, add `--typescript` to verify both
 languages. `summary.json` must say `complete: true`; partial results remain
 false. Each runner has four decisions and a 180-second process timeout. These
 are not provider billing caps.
+
+The OpenAI provider is also available directly: `python/run.py --provider
+openai` and `python/run_native.py --provider openai` choose each step through
+the OpenAI Decisions API instead of TypeSafe Jev, and
+`python/choose_decision.py --model openai` plus
+`verify_decision_cli.py --model openai` exercise the same path against the
+synthetic fixtures without a browser.
 
 ### Prove which path acted
 

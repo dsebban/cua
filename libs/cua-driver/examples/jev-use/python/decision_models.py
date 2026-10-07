@@ -16,6 +16,7 @@ from typing import Any, Literal, Mapping, Protocol
 
 from choose_action import REQUEST_SCHEMA, REQUEST_SCHEMA_V2, provider_observation
 from jev_adapter import choose_bounded_with_typesafe
+from openai_adapter import choose_bounded_with_openai
 
 DecisionKind = Literal["selected", "reobserve", "abstain", "error"]
 
@@ -184,6 +185,31 @@ class TypeSafeDecisionModel:
             raise ValueError("Jev selected an unknown candidate")
         if choice.probabilities.get(choice.selected_id) != max(choice.probabilities.values()):
             raise ValueError("Jev selection disagrees with its scores")
+        return ModelScores(
+            choice.probabilities,
+            choice.model or self.name,
+            selected_id=choice.selected_id,
+            confidence=choice.confidence,
+        )
+
+
+class OpenAIDecisionModel:
+    name = "openai-decisions"
+
+    def __init__(self, client: Any) -> None:
+        self.client = client
+
+    def score(self, request: DecisionRequest) -> ModelScores:
+        choice = choose_bounded_with_openai(
+            self.client,
+            goal=request.goal,
+            state=request.provider_observation(),
+            criteria=request.criteria,
+        )
+        if choice.selected_id not in request.criteria:
+            raise ValueError("OpenAI selected an unknown candidate")
+        if choice.probabilities.get(choice.selected_id) != max(choice.probabilities.values()):
+            raise ValueError("OpenAI selection disagrees with its scores")
         return ModelScores(
             choice.probabilities,
             choice.model or self.name,

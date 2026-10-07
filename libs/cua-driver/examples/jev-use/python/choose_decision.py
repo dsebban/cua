@@ -14,6 +14,7 @@ from decision_models import (
     S1_MODALITIES,
     DecisionRequest,
     ModelScores,
+    OpenAIDecisionModel,
     S1DecisionModel,
     TypeSafeDecisionModel,
     choose,
@@ -110,7 +111,7 @@ def choose_request(value: Any, model: Any) -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", choices=("mock", "jev", "s1"), default="mock")
+    parser.add_argument("--model", choices=("mock", "jev", "openai", "s1"), default="mock")
     parser.add_argument(
         "--s1-modality",
         choices=S1_MODALITIES,
@@ -149,6 +150,15 @@ def main() -> None:
             )
         except (KeyError, ValueError, ImportError) as error:
             raise SystemExit(f"S1 setup failed: {error}") from None
+    elif args.model == "openai":
+        try:
+            from openai_adapter import HttpDecisionsClient
+
+            result = choose_request(request, OpenAIDecisionModel(HttpDecisionsClient()))
+        except Exception:
+            raise SystemExit("provider setup failed") from None
+        sys.stdout.write(json.dumps(result, separators=(",", ":")) + "\n")
+        return
     else:
         try:
             from typesafe_sdk import TypeSafeClient
